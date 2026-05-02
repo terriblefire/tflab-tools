@@ -16,31 +16,26 @@
 
 """
 Generate PDF from Eagle schematic files without requiring Eagle to be installed.
-Uses eagle2svg to convert .sch to SVG, then svg2rlg/reportlab to convert to PDF.
-Generates a multi-page PDF with one page per schematic sheet.
+Uses the bundled tflab._eagle2svg to convert .sch to SVG, then svg2rlg/reportlab
+to convert to PDF. Generates a multi-page PDF with one page per schematic sheet.
 """
 
-import sys
+import contextlib
+import io
 import os
-import subprocess
+import sys
 import tempfile
 import xml.etree.ElementTree as ET
-from pathlib import Path
 
 
 def check_dependencies():
-    """Check if required Python packages are installed."""
+    """Check that the optional [eagle] extras are installed."""
     try:
-        import eagle2svg
+        from svglib.svglib import svg2rlg  # noqa: F401
+        from reportlab.graphics import renderPDF  # noqa: F401
     except ImportError:
-        print("Error: eagle2svg not installed. Install with: pip install eagle2svg")
-        sys.exit(1)
-
-    try:
-        from svglib.svglib import svg2rlg
-        from reportlab.graphics import renderPDF
-    except ImportError:
-        print("Error: svglib or reportlab not installed. Install with: pip install svglib reportlab")
+        print("Error: svglib/reportlab not installed. "
+              "Install with: pip install 'tflab-tools[eagle]'")
         sys.exit(1)
 
 
@@ -57,38 +52,30 @@ def count_sheets(sch_file):
         return 1  # Default to 1 sheet
 
 
+DEFAULT_LAYERS = {
+    1: True, 16: True, 17: True, 18: True, 19: True, 20: True, 21: True,
+    22: True, 25: True, 26: True, 29: True, 30: True,
+    91: True, 92: True, 93: True, 94: True, 95: True, 96: True, 97: True,
+    104: True,
+}
+
+
 def eagle_to_svg(sch_file, svg_file, sheet=1):
-    """Convert Eagle schematic to SVG using eagle2svg.
+    """Convert one sheet of an Eagle schematic to SVG.
 
-    Args:
-        sch_file: Path to Eagle schematic file
-        svg_file: Output SVG file path
-        sheet: Sheet number (1-indexed, will be converted to 0-indexed for eagle2svg)
+    Uses the bundled tflab._eagle2svg renderer; sheet is 1-indexed externally
+    and converted to the renderer's 0-indexed convention.
     """
+    from tflab._eagle2svg import eagle_parser
+
     try:
-        # Find eagle2svg executable in the same venv as this script
-        venv_dir = Path(sys.executable).parent
-        eagle2svg_bin = venv_dir / "eagle2svg"
-
-        if not eagle2svg_bin.exists():
-            # Fall back to searching in PATH
-            eagle2svg_bin = "eagle2svg"
-
-        # eagle2svg uses 0-based indexing, so subtract 1
-        sheet_index = sheet - 1
-        cmd = [str(eagle2svg_bin), sch_file, str(sheet_index)]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-
-        # eagle2svg writes to stdout
-        with open(svg_file, 'w') as f:
-            f.write(result.stdout)
-
+        data = eagle_parser.Eagle(sch_file)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            data.render(sheet - 1, dict(DEFAULT_LAYERS))
+        with open(svg_file, "w") as f:
+            f.write(buf.getvalue())
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"Error converting to SVG: {e}")
-        print(f"stdout: {e.stdout}")
-        print(f"stderr: {e.stderr}")
-        return False
     except Exception as e:
         print(f"Error converting to SVG: {e}")
         import traceback
@@ -254,7 +241,7 @@ def generate_pdf(sch_file, pdf_file, sheet=None):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: generate_schematic_pdf.py <input.sch> <output.pdf> [sheet_number]")
+        print("Usage: eagle-pdf <input.sch> <output.pdf> [sheet_number]")
         print("  sheet_number: schematic sheet to render (default: all sheets)")
         print("                use a number (1, 2, 3...) to render a specific sheet")
         sys.exit(1)

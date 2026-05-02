@@ -27,10 +27,10 @@ For development:
 pip install -e .
 ```
 
-> The `[eagle]` extra pulls a patched fork of `eagle2svg` from
-> `github.com/terriblefire/eagle2svg`. If you need to publish this package to
-> PyPI, vendor that fork or replace the direct git reference first
-> (`pyproject.toml` has `tool.hatch.metadata.allow-direct-references = true`).
+> The `[eagle]` extra includes a vendored copy of a patched
+> [`eagle2svg`](https://github.com/terriblefire/eagle2svg) (Bus rendering,
+> Plain section fix, multi-line text fix, 5% margin) under `tflab._eagle2svg`.
+> See `src/tflab/_eagle2svg/NOTICE.md` for the BSD attribution.
 
 ## Commands
 
@@ -251,15 +251,16 @@ look up the package pin map.
 ## eagle-pdf
 
 Render an EagleCAD schematic to a multi-page PDF (one PDF page per schematic
-sheet). Uses a patched [`eagle2svg`](https://github.com/terriblefire/eagle2svg)
-to convert each sheet to SVG, then `svglib` + `reportlab` to assemble the PDF.
+sheet). Uses a vendored, patched [`eagle2svg`](https://github.com/terriblefire/eagle2svg)
+(under `tflab._eagle2svg`) to convert each sheet to SVG, then `svglib` +
+`reportlab` to assemble the PDF.
 
 ```sh
 eagle-pdf <input.sch> <output.pdf> [sheet_number]
 ```
 
 If `sheet_number` is omitted every sheet in the schematic is rendered. The
-patched `eagle2svg` adds:
+vendored `eagle2svg` adds, on top of upstream v0.1.5:
 
 - Bus rendering (the upstream's `Bus` class is a stub)
 - Plain-section parsing fix (text annotations, wires, circles etc. now appear)
@@ -369,7 +370,8 @@ tflab/
     ├── mkzorro.py                  mkzorro entry point
     ├── eagle_netlist.py            eagle-netlist entry point
     ├── eagle_pcf.py                eagle-pcf entry point
-    └── eagle_pdf.py                eagle-pdf entry point
+    ├── eagle_pdf.py                eagle-pdf entry point
+    └── _eagle2svg/                 vendored eagle2svg fork (BSD; see NOTICE.md)
 ```
 
 ### Adding a new tool
@@ -395,6 +397,6 @@ the terms of the GNU General Public License as published by the Free Software
 Foundation; either version 2 of the License, or (at your option) any later
 version. See `LICENSE` for the full text.
 
-The bundled `eagle2svg` fork (pulled in by the `[eagle]` extra) is a separate
-project under its own BSD license — see
-<https://github.com/terriblefire/eagle2svg>.
+The vendored `tflab._eagle2svg` module is a copy of a patched
+[`eagle2svg`](https://github.com/terriblefire/eagle2svg) and remains under its
+upstream BSD license — see `src/tflab/_eagle2svg/NOTICE.md`.
