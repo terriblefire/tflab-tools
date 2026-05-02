@@ -2,6 +2,11 @@
 
 A small collection of hardware / FPGA bench tools by Stephen J. Leary.
 
+Eight command-line utilities and a Python library for talking to HP 1660-series
+logic analysers. The package is organised so the core install is pure-Python
+and dependency-free; transport- and EDA-specific dependencies live in optional
+extras.
+
 ## Install
 
 ```sh
@@ -22,26 +27,153 @@ For development:
 pip install -e .
 ```
 
+> The `[eagle]` extra pulls a patched fork of `eagle2svg` from
+> `github.com/terriblefire/eagle2svg`. If you need to publish this package to
+> PyPI, vendor that fork or replace the direct git reference first
+> (`pyproject.toml` has `tool.hatch.metadata.allow-direct-references = true`).
+
 ## Commands
 
 After install, the following commands are available on `$PATH`:
 
-| Command      | Description |
-|--------------|-------------|
-| `bin2mif`    | Convert binary file(s) to MIF-style hex output (configurable word width and endianness). |
-| `bin2vrlg`   | Convert a binary file to a Verilog `bootrom` module. |
-| `mkzorro`    | Generate Amiga Zorro AutoConfig ROM nibbles (Z2/Z3, configurable size, manufacturer ID, serial, product code). |
-| `hp1661-vcd` | Capture data from an HP 1660-series logic analyser and write a VCD file. |
+| Command         | Description |
+|-----------------|-------------|
+| `bin2mif`       | Convert binary file(s) to MIF-style hex output (configurable word width and endianness). |
+| `bin2vrlg`      | Convert a binary file to a Verilog `bootrom` module. |
+| `mkzorro`       | Generate Amiga Zorro AutoConfig ROM nibbles (Z2/Z3, configurable size, manufacturer ID, serial, product code). |
+| `hp1661-vcd`    | Capture data from an HP 1660-series logic analyser and write a VCD file. |
 | `eagle-netlist` | Generate a netlist from an EagleCAD `.sch` file. *(extra: `[eagle]`)* |
 | `eagle-pcf`     | Convert an Eagle netlist to an FPGA PCF (pin constraints) file. *(extra: `[eagle]`)* |
 | `eagle-pdf`     | Render an EagleCAD schematic to multi-page PDF. *(extra: `[eagle]`)* |
 
-Each command supports `--help`.
+Each command supports `--help` (the Eagle tools print a usage line when invoked
+without arguments).
+
+---
+
+## bin2mif
+
+Convert one or more binary files into MIF-style hex (one word per line, lower
+case, fixed width). Useful for initialising on-chip ROM/RAM contents in FPGA
+toolchains that consume MIF or compatible formats.
+
+```sh
+bin2mif [-h] [-w {8,16,32,64}] [-e ENDIAN] FILE [FILE ...]
+```
+
+| Flag              | Default | Description |
+|-------------------|---------|-------------|
+| `-w`, `--width`   | `8`     | Word width in bits. |
+| `-e`, `--endian`  | `big`   | Byte order. Accepts `big`/`b` or `little`/`l`. |
+
+Output is written to stdout, one word per line, padded to the full width.
+Any trailing partial word is silently dropped.
+
+```sh
+$ printf '\x00\x01\x02\xff' > rom.bin
+$ bin2mif -w 8 rom.bin
+00
+01
+02
+ff
+$ bin2mif -w 16 -e little rom.bin
+0100
+ff02
+$ bin2mif -w 16 -e big rom.bin > rom.mif
+```
+
+---
+
+## bin2vrlg
+
+Convert a binary file into a synthesisable Verilog `bootrom` module — a
+clocked address → data ROM with one `case` arm per non-zero byte.
+
+```sh
+bin2vrlg [-h] -f FILENAME
+```
+
+Output goes to stdout. The address bus width is calculated from the file size
+(`ceil(log2(size))`); zero bytes are emitted via the `default` arm to keep
+the source file compact.
+
+```sh
+$ printf '\x00\x01\x02\xff' > rom.bin
+$ bin2vrlg -f rom.bin
+module bootrom
+(
+        input           clk,            // bus clock
+        input [1:0]     address,        // address in
+        output reg [7:0] data           // data out
+);
+
+always @(posedge clk) begin
+        case (address)
+                2'd1:   data    <=      8'h01;
+                2'd2:   data    <=      8'h02;
+                2'd3:   data    <=      8'hff;
+                default: data   <=      8'd0;
+        endcase
+end
+
+endmodule
+```
+
+---
+
+## mkzorro
+
+Generate the AutoConfig ROM nibble stream for an Amiga Zorro II/III expansion
+card. Output is one hex nibble per line on stdout, with the nibble inversion
+required by the AutoConfig protocol applied automatically (every nibble after
+the ER_TYPE byte is bit-inverted).
+
+```sh
+mkzorro [-h] [--version {Z2,Z3}] [--size {64K,128K,256K,512K,1M,2M,4M,8M}]
+        [--manuid MANUID] [--serial SERIAL] [--product PRODUCT]
+        [--flags FLAGS] [--rom-vector ROM_VECTOR]
+```
+
+| Flag            | Default | Description |
+|-----------------|---------|-------------|
+| `--version`     | `Z2`    | Zorro bus version (Z2 = 0xC0, Z3 = 0x80 in ER_TYPE). |
+| `--size`        | `64K`   | Card memory size code. |
+| `--manuid`      | `5080`  | Manufacturer ID. Accepts decimal or `0x...`. |
+| `--serial`      | `4060`  | Serial number. Accepts decimal or `0x...`. |
+| `--product`     | `148`   | Product code. |
+| `--flags`       | `0x80`  | ER_FLAGS byte. |
+| `--rom-vector`  | `0`     | Diag/init ROM offset. |
+
+Running with no arguments produces the default Terrible Fire control card ROM:
+
+```sh
+$ mkzorro | tr '\n' ' '
+C 1 6 B 7 F F F E C 2 7 F F F F F 0 2 3 F F F F F F F F F F F F
+```
+
+For a Z3 card with 1 MB of address space:
+
+```sh
+$ mkzorro --version Z3 --size 1M | head -2
+8
+5
+```
+
+---
 
 ## hp1661-vcd
 
 Captures acquisition data from an HP 1660C/CS/CP-series logic analyser,
-discovers labels automatically, and writes a standard VCD file.
+discovers labels automatically, and writes a standard VCD file consumable by
+GTKWave, ModelSim, Surfer, etc.
+
+```sh
+hp1661-vcd [-h] [--lan LAN] [--serial SERIAL] [--baud BAUD] [--gpib]
+           [--save-config SAVE_CONFIG] [--load-config LOAD_CONFIG]
+           [output]
+```
+
+`output` defaults to `capture.vcd`.
 
 ### Transport options
 
@@ -57,6 +189,9 @@ hp1661-vcd --serial /dev/tty.usbserial-1440 --baud 19200 capture.vcd
 ```
 
 ### Saving/loading label configurations
+
+Label discovery hits the analyser with a chain of SCPI queries; if you're
+iterating on captures it's worth saving the result and reusing it.
 
 ```sh
 # Save the current LA label config to JSON
@@ -80,9 +215,66 @@ The adapter enumerates as a USBTMC device. PyVISA discovers it automatically.
 **Note:** The HP 1660-series requires `SELECT 1` before machine-level commands
 over GPIB. The driver handles this automatically.
 
+---
+
+## eagle-netlist
+
+Extract a flat netlist from an EagleCAD schematic (`.sch`) file. Output format
+matches Eagle's native netlist export, so it slots straight into downstream
+tools that already understand that format (including `eagle-pcf` below).
+
+```sh
+eagle-netlist <input.sch> <output.net>
+```
+
+Works without Eagle installed — parses the XML directly with `lxml`. Library,
+deviceset, device and gate/pin → pad mappings are resolved from the embedded
+library definitions in the schematic.
+
+---
+
+## eagle-pcf
+
+Convert an Eagle netlist (as produced by `eagle-netlist` or Eagle itself) into
+a Lattice / Project IceStorm PCF (Physical Constraints File) suitable for
+`nextpnr`, `arachne-pnr`, etc.
+
+```sh
+eagle-pcf <input.net> <output.pcf> <target_chip>
+```
+
+The third positional argument is the FPGA part being targeted; it's used to
+look up the package pin map.
+
+---
+
+## eagle-pdf
+
+Render an EagleCAD schematic to a multi-page PDF (one PDF page per schematic
+sheet). Uses a patched [`eagle2svg`](https://github.com/terriblefire/eagle2svg)
+to convert each sheet to SVG, then `svglib` + `reportlab` to assemble the PDF.
+
+```sh
+eagle-pdf <input.sch> <output.pdf> [sheet_number]
+```
+
+If `sheet_number` is omitted every sheet in the schematic is rendered. The
+patched `eagle2svg` adds:
+
+- Bus rendering (the upstream's `Bus` class is a stub)
+- Plain-section parsing fix (text annotations, wires, circles etc. now appear)
+- Multi-line text alignment fix
+- 5% whitespace margin for breathing room
+
+Eagle does **not** need to be installed — the schematic XML is parsed directly.
+
+---
+
 ## Library use
 
-The `tflab` Python module exposes the HP 1660-series driver:
+The `tflab` Python module exposes the HP 1660-series driver. The `HP1660`
+class is transport-agnostic — pass any object with `read(n)`/`write(data)`
+methods (and optionally `settimeout(t)`/`timeout`) and it just works.
 
 ```python
 from tflab import HP1660, SocketTransport
@@ -144,6 +336,55 @@ la.set_trigger_position("CENTER")
 la.run()
 la.stop()
 ```
+
+### Public classes
+
+| Symbol           | Purpose |
+|------------------|---------|
+| `HP1660`         | Main driver (transport-agnostic SCPI + acquisition + VCD export). |
+| `SocketTransport`| Wraps a `socket.socket` for the LAN transport. |
+| `VisaTransport`  | Wraps a PyVISA resource for GPIB/USBTMC; uses VISA-native framing. |
+| `FormatConfig`   | Channel labels + thresholds + pod assignment, JSON serialisable. |
+| `Label`          | A single label (name, polarity, clock bits, pod masks, width). |
+| `TriggerConfig`  | Full trigger setup (terms, sequence levels, ranges, timers, position), JSON serialisable. |
+| `TriggerTerm`    | Pattern recogniser term `A`–`J`. |
+| `TriggerLevel`   | One sequence level (find/branch/timer controls). |
+| `Acquisition`    | Captured rows + sample period + trigger row + `to_vcd(path)`. |
+
+---
+
+## Layout
+
+```
+tflab/
+├── pyproject.toml
+├── README.md
+├── LICENSE                         BSD-2-Clause
+└── src/tflab/
+    ├── __init__.py                 re-exports the public API
+    ├── hp1660.py                   logic-analyser driver (library)
+    ├── hp1661_vcd.py               hp1661-vcd entry point
+    ├── bin2mif.py                  bin2mif entry point
+    ├── bin2vrlg.py                 bin2vrlg entry point
+    ├── mkzorro.py                  mkzorro entry point
+    ├── eagle_netlist.py            eagle-netlist entry point
+    ├── eagle_pcf.py                eagle-pcf entry point
+    └── eagle_pdf.py                eagle-pdf entry point
+```
+
+### Adding a new tool
+
+1. Drop a new `src/tflab/foo.py` with a `def main():` that returns an int
+   exit code.
+2. Add an entry to `[project.scripts]` in `pyproject.toml`:
+   ```toml
+   foo = "tflab.foo:main"
+   ```
+3. `pip install -e .` — the `foo` command is now on `$PATH`.
+
+If the tool needs third-party dependencies, add them to a new
+`[project.optional-dependencies]` extra rather than to `dependencies`, so the
+core install stays minimal.
 
 ## License
 
