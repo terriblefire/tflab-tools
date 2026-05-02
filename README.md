@@ -1,5 +1,7 @@
 # tflab-tools
 
+[![tests](https://github.com/terriblefire/tflab-tools/actions/workflows/tests.yml/badge.svg)](https://github.com/terriblefire/tflab-tools/actions/workflows/tests.yml)
+
 A small collection of hardware / FPGA bench tools by Stephen J. Leary.
 
 Eight command-line utilities and a Python library for talking to HP 1660-series

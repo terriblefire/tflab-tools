@@ -1,0 +1,58 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install system dependencies (cairo for svglib/rlpycairo)
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev
+
+      - name: Install package with eagle + dev extras
+        run: pip install -e '.[eagle,dev]'
+
+      - name: Show installed package metadata
+        run: pip show tflab-tools
+
+      - name: Run pytest
+        run: pytest -v
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tooling
+        run: pip install build twine
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: twine check (verifies PyPI-uploadability)
+        run: twine check dist/*
+
+      - name: Upload built artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
