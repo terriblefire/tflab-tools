@@ -847,10 +847,42 @@ class HP1660:
     # -- Acquisition ------------------------------------------------------
 
     def run(self):
+        """Start acquisition (non-blocking)."""
         self.cmd(':START')
 
     def stop(self):
+        """Stop acquisition."""
         self.cmd(':STOP')
+
+    def triggered(self):
+        """Check if trigger has fired. Returns True/False."""
+        resp = self.query(':MESR1?')
+        try:
+            return (int(resp) & 4) != 0
+        except ValueError:
+            return False
+
+    def complete(self):
+        """Check if acquisition is complete. Returns True/False."""
+        resp = self.query(':MESR1?')
+        try:
+            return (int(resp) & 1) != 0
+        except ValueError:
+            return False
+
+    def wait(self, timeout=30):
+        """Wait for acquisition to complete. Returns True if complete, False on timeout."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.complete():
+                return True
+            time.sleep(0.2)
+        return False
+
+    def single(self, timeout=30):
+        """Run a single acquisition and wait. Returns True if complete, False on timeout."""
+        self.run()
+        return self.wait(timeout)
 
     def acquire(self, machine=1):
         """Discover labels and download acquisition data. Returns Acquisition."""
