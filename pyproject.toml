@@ -26,7 +26,8 @@ dependencies = []
 [project.optional-dependencies]
 serial = ["pyserial>=3.5"]
 gpib = ["pyvisa>=1.13", "pyvisa-py>=0.7", "pyusb>=1.2"]
-eagle = ["lxml>=4.9", "svglib>=1.5", "reportlab>=3.6", "xmltodict>=0.13"]
+eagle = ["lxml>=4.9", "svglib>=1.5", "reportlab>=3.6", "xmltodict>=0.13", "pypdf>=4.0"]
+dev = ["pytest>=7.0"]
 
 [project.scripts]
 bin2mif       = "tflab.bin2mif:main"
@@ -43,7 +44,11 @@ packages = ["src/tflab"]
 [tool.hatch.build.targets.sdist]
 include = [
     "src/tflab",
+    "tests",
     "README.md",
     "LICENSE",
     "pyproject.toml",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -102,50 +102,23 @@ def svg_to_pdf(svg_file, pdf_file):
 
 
 def combine_pdfs(pdf_files, output_pdf):
-    """Combine multiple PDF files into a single multi-page PDF."""
+    """Combine multiple single-page PDFs into a multi-page PDF."""
     try:
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.pagesizes import letter
-        from PyPDF2 import PdfReader, PdfWriter
-
-        writer = PdfWriter()
-
-        for pdf_file in pdf_files:
-            reader = PdfReader(pdf_file)
-            for page in reader.pages:
-                writer.add_page(page)
-
-        with open(output_pdf, 'wb') as f:
-            writer.write(f)
-
-        return True
+        from pypdf import PdfReader, PdfWriter
     except ImportError:
-        print("Warning: PyPDF2 not installed. Falling back to single SVG conversion.")
-        # Fall back to converting all SVGs into a single PDF
-        return combine_svgs_to_pdf(pdf_files, output_pdf)
-    except Exception as e:
-        print(f"Error combining PDFs: {e}")
+        print("Error: pypdf not installed. Install with: pip install 'tflab-tools[eagle]'")
         return False
 
-
-def combine_svgs_to_pdf(svg_files, output_pdf):
-    """Convert multiple SVG files into a single multi-page PDF."""
+    writer = PdfWriter()
     try:
-        from svglib.svglib import svg2rlg
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.pagesizes import letter
-
-        # For multi-page PDF, we need to use canvas directly
-        from reportlab.graphics import renderPDF
-        from io import BytesIO
-        import PyPDF2
-
-        # This will fail gracefully if PyPDF2 is available
-        raise ImportError("Use PyPDF2 method")
-
-    except:
-        # Simple fallback: just use the first sheet
-        print("Warning: Cannot create multi-page PDF without PyPDF2")
+        for pdf_file in pdf_files:
+            for page in PdfReader(pdf_file).pages:
+                writer.add_page(page)
+        with open(output_pdf, "wb") as f:
+            writer.write(f)
+        return True
+    except Exception as e:
+        print(f"Error combining PDFs: {e}")
         return False
 
 
