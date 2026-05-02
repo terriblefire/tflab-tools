@@ -1,6 +1,9 @@
 # tflab-tools
 
+[![PyPI](https://img.shields.io/pypi/v/tflab-tools.svg)](https://pypi.org/project/tflab-tools/)
+[![Python](https://img.shields.io/pypi/pyversions/tflab-tools.svg)](https://pypi.org/project/tflab-tools/)
 [![tests](https://github.com/terriblefire/tflab-tools/actions/workflows/tests.yml/badge.svg)](https://github.com/terriblefire/tflab-tools/actions/workflows/tests.yml)
+[![License: GPL v2+](https://img.shields.io/badge/license-GPLv2+-blue.svg)](LICENSE)
 
 A small collection of hardware / FPGA bench tools by Stephen J. Leary.
 
@@ -11,22 +14,49 @@ extras.
 
 ## Install
 
+The package is published on PyPI as
+[`tflab-tools`](https://pypi.org/project/tflab-tools/).
+
+### Recommended — isolated install with `uv` or `pipx`
+
+For CLI use, install into an isolated environment so the commands land on
+your `$PATH` without touching your system Python:
+
 ```sh
-pip install .
-# or, with serial-port support for hp1661-vcd:
-pip install '.[serial]'
-# or, with GPIB/USBTMC support:
-pip install '.[gpib]'
-# or, with EagleCAD tooling support:
-pip install '.[eagle]'
-# or all extras:
-pip install '.[serial,gpib,eagle]'
+# uv (fastest)
+uv tool install 'tflab-tools[serial,gpib,eagle]'
+
+# or pipx
+pipx install 'tflab-tools[serial,gpib,eagle]'
 ```
 
-For development:
+After that, `bin2mif`, `bin2vrlg`, `mkzorro`, `hp1661-vcd`, `eagle-netlist`,
+`eagle-pcf` and `eagle-pdf` all run as ordinary commands from any shell.
+
+### Plain `pip` in a venv
 
 ```sh
-pip install -e .
+python3 -m venv ~/.venvs/tflab && source ~/.venvs/tflab/bin/activate
+pip install 'tflab-tools[serial,gpib,eagle]'
+```
+
+### Picking your extras
+
+```sh
+pip install tflab-tools                        # core: bin2mif, bin2vrlg, mkzorro, hp1661-vcd (LAN)
+pip install 'tflab-tools[serial]'              # + RS-232 transport for hp1661-vcd
+pip install 'tflab-tools[gpib]'                # + GPIB/USBTMC transport (PyVISA)
+pip install 'tflab-tools[eagle]'               # + eagle-netlist, eagle-pcf, eagle-pdf
+pip install 'tflab-tools[serial,gpib,eagle]'   # everything
+```
+
+### From source / for development
+
+```sh
+git clone https://github.com/terriblefire/tflab-tools
+cd tflab-tools
+pip install -e '.[serial,gpib,eagle,dev]'
+pytest
 ```
 
 > The `[eagle]` extra includes a vendored copy of a patched
