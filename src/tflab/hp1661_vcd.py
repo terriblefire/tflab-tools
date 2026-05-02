@@ -18,29 +18,39 @@ import socket
 import sys
 import time
 
-from tflab.hp1660 import HP1660, SocketTransport, FormatConfig, Acquisition
+from tflab.hp1660 import HP1660, SocketTransport, VisaTransport, FormatConfig, Acquisition
 
 
 def main():
     p = argparse.ArgumentParser(description='HP 1661C -> VCD')
     p.add_argument('output', nargs='?', default='capture.vcd')
-    p.add_argument('--lan', default='192.168.10.10', help='LAN host')
+    p.add_argument('--lan', default=None, help='LAN host')
     p.add_argument('--serial', help='Serial port path')
     p.add_argument('--baud', type=int, default=19200)
+    p.add_argument('--gpib', action='store_true', help='Use GPIB via USBTMC')
     p.add_argument('--save-config', help='Save label config to JSON')
     p.add_argument('--load-config', help='Load label config from JSON')
     args = p.parse_args()
 
     t0 = time.time()
 
-    if args.serial:
+    if args.gpib:
+        import pyvisa
+        rm = pyvisa.ResourceManager('@py')
+        resources = rm.list_resources('USB?*')
+        if not resources:
+            print("No USBTMC devices found"); sys.exit(1)
+        inst = rm.open_resource(resources[0])
+        la = HP1660(VisaTransport(inst))
+    elif args.serial:
         import serial
         port = serial.Serial(args.serial, args.baud, timeout=10)
         la = HP1660(port)
     else:
+        host = args.lan or '192.168.10.10'
         sock = socket.socket()
         sock.settimeout(30)
-        sock.connect((args.lan, 5025))
+        sock.connect((host, 5025))
         la = HP1660(SocketTransport(sock))
 
     print(la.idn(), flush=True)
@@ -73,7 +83,9 @@ def main():
 
     acq.to_vcd(args.output)
 
-    if args.serial:
+    if args.gpib:
+        inst.close()
+    elif args.serial:
         port.close()
     else:
         sock.close()

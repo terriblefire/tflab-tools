@@ -47,6 +47,33 @@ class SocketTransport:
         self.sock.settimeout(t)
 
 
+class VisaTransport:
+    """Wrap a PyVISA resource for use with HP1660.
+
+    VISA handles framing differently — queries return complete responses,
+    and block reads use read_raw(). This transport bypasses the byte-by-byte
+    protocol in HP1660 and provides direct query/read_block methods.
+    """
+
+    def __init__(self, resource):
+        self.inst = resource
+        self.inst.timeout = 30000  # ms
+        self._direct = True  # flag for HP1660 to use direct mode
+
+    def read(self, n):
+        return self.inst.read_bytes(n)
+
+    def write(self, data):
+        self.inst.write_raw(data)
+
+    def settimeout(self, t):
+        self.inst.timeout = int(t * 1000)
+
+    @property
+    def timeout(self):
+        return self.inst.timeout / 1000
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -305,16 +332,25 @@ class HP1660:
         self._mode_cache = {}
         self.cmd('*CLS')
         self.cmd(':SYSTEM:HEADER OFF')
+        self.cmd('SELECT 1')
         self.query('*OPC?')
 
     # -- SCPI primitives --------------------------------------------------
 
     def cmd(self, command):
         """Send a command (no response expected)."""
-        self._t.write((command + '\r\n').encode('ascii'))
+        if hasattr(self._t, '_direct'):
+            self._t.inst.write(command)
+        else:
+            self._t.write((command + '\r\n').encode('ascii'))
 
     def query(self, command, timeout=5):
         """Send a command and read one line response."""
+        if hasattr(self._t, '_direct'):
+            try:
+                return self._t.inst.query(command).strip()
+            except Exception:
+                return ''
         self._t.write((command + '\r\n').encode('ascii'))
         old = self._timeout()
         self._settimeout(timeout)
@@ -332,6 +368,15 @@ class HP1660:
 
     def read_block(self):
         """Read IEEE 488.2 definite-length block data (#NLLLL<data>)."""
+        if hasattr(self._t, '_direct'):
+            raw = self._t.inst.read_raw()
+            # Strip any header text before #
+            idx = raw.find(b'#')
+            if idx >= 0:
+                nd = int(raw[idx+1:idx+2])
+                data_start = idx + 2 + nd
+                return raw[data_start:]
+            return raw
         while True:
             c = self._t.read(1)
             if c == b'#':
@@ -485,28 +530,19 @@ class HP1660:
         return 'TFORMAT' if mode == 'TIMING' else 'SFORMAT'
 
     def discover_labels(self, machine=1):
-        """Discover all active labels on the given machine.
-
-        Pipelines column queries, then pipelines label queries,
-        reading all responses in bulk.
-        """
+        """Discover all active labels on the given machine."""
         mode = self.acq_mode(machine)
         if not mode:
             return []
         lc = 'TLIST' if mode == 'TIMING' else 'SLIST'
         fc = 'TFORMAT' if mode == 'TIMING' else 'SFORMAT'
 
-        # Pipeline column queries
-        n_cols = 30
-        for col in range(n_cols):
-            self.cmd(f':MACHINE{machine}:{lc}:COLUMN? {col}')
-
-        # Read all column responses
+        # Enumerate column names
         skip = _COLUMN_SKIP
         seen = set()
         names = []
-        for col in range(n_cols):
-            resp = self._read_line()
+        for col in range(30):
+            resp = self.query(f':MACHINE{machine}:{lc}:COLUMN? {col}')
             if not resp:
                 continue
             name = None
@@ -522,35 +558,15 @@ class HP1660:
             seen.add(name)
             names.append(name)
 
-        # Pipeline label queries
-        for name in names:
-            self.cmd(f":MACHINE{machine}:{fc}:LABEL? '{name}'")
-
-        # Read all label responses
+        # Query label assignments
         labels = []
         for name in names:
-            resp = self._read_line()
+            resp = self.query(f":MACHINE{machine}:{fc}:LABEL? '{name}'")
             label = self._parse_label(resp)
             if label:
                 labels.append(label)
 
         return labels
-
-    def _read_line(self, timeout=5):
-        """Read one line response (no command sent)."""
-        old = self._timeout()
-        self._settimeout(timeout)
-        buf = b''
-        try:
-            while True:
-                ch = self._t.read(1)
-                if not ch or ch == b'\n':
-                    break
-                buf += ch
-        except (TimeoutError, OSError):
-            pass
-        self._settimeout(old)
-        return buf.decode('ascii', errors='replace').strip()
 
     def get_label(self, name, machine=1):
         """Query a single label's assignment. Returns Label or None."""

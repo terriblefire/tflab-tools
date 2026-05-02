@@ -25,7 +25,13 @@ dependencies = []
 
 [project.optional-dependencies]
 serial = ["pyserial>=3.5"]
-eagle = ["lxml>=4.9", "eagle2svg", "svglib>=1.5", "reportlab>=3.6"]
+gpib = ["pyvisa>=1.13", "pyvisa-py>=0.7", "pyusb>=1.2"]
+eagle = [
+    "lxml>=4.9",
+    "eagle2svg @ git+https://github.com/terriblefire/eagle2svg@master",
+    "svglib>=1.5",
+    "reportlab>=3.6",
+]
 
 [project.scripts]
 bin2mif       = "tflab.bin2mif:main"
@@ -35,6 +41,12 @@ hp1661-vcd    = "tflab.hp1661_vcd:main"
 eagle-netlist = "tflab.eagle_netlist:main"
 eagle-pcf     = "tflab.eagle_pcf:main"
 eagle-pdf     = "tflab.eagle_pdf:main"
+
+[tool.hatch.metadata]
+# Required because the [eagle] extra references a git URL (eagle2svg fork).
+# This means tflab-tools cannot be published to PyPI as-is; either drop
+# the direct reference or vendor the fork before doing so.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tflab"]
