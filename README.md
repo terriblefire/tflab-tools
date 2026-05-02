@@ -359,7 +359,7 @@ la.stop()
 tflab/
 ├── pyproject.toml
 ├── README.md
-├── LICENSE                         BSD-2-Clause
+├── LICENSE                         GPL-2.0-or-later
 └── src/tflab/
     ├── __init__.py                 re-exports the public API
     ├── hp1660.py                   logic-analyser driver (library)
@@ -388,4 +388,13 @@ core install stays minimal.
 
 ## License
 
-BSD 2-Clause. See `LICENSE`.
+Copyright (C) 2016-2026 S.J. Leary.
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any later
+version. See `LICENSE` for the full text.
+
+The bundled `eagle2svg` fork (pulled in by the `[eagle]` extra) is a separate
+project under its own BSD license — see
+<https://github.com/terriblefire/eagle2svg>.

@@ -7,15 +7,15 @@ name = "tflab-tools"
 version = "0.1.0"
 description = "Stephen Leary's hardware/FPGA bench tools (bin2mif, bin2vrlg, mkzorro, hp1660 logic-analyser interface)"
 readme = "README.md"
-license = "BSD-2-Clause"
-authors = [{ name = "Stephen Leary", email = "sleary@vavi.co.uk" }]
+license = "GPL-2.0-or-later"
+authors = [{ name = "S.J. Leary", email = "stephen@terriblefire.com" }]
 requires-python = ">=3.9"
 keywords = ["fpga", "verilog", "amiga", "zorro", "logic-analyser", "hp1660", "mif"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: BSD License",
+    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
