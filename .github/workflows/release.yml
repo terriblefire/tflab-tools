@@ -1,0 +1,77 @@
+name: release
+
+# Tag-triggered publish.
+#   git tag v0.2.0-rc1 && git push --tags   ->  publishes to TestPyPI
+#   git tag v0.2.0     && git push --tags   ->  publishes to PyPI
+#
+# Auth uses PyPI/TestPyPI trusted publishing (OIDC) — no API tokens.
+# The pending publishers must be registered on PyPI/TestPyPI first; see
+# README.md "Releasing" section for the exact configuration.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tooling
+        run: pip install build twine
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: twine check
+        run: twine check dist/*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: contains(github.ref_name, '-rc') || contains(github.ref_name, '-test')
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/tflab-tools
+    permissions:
+      id-token: write   # required for trusted publishing
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    if: ${{ !contains(github.ref_name, '-rc') && !contains(github.ref_name, '-test') }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/tflab-tools
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

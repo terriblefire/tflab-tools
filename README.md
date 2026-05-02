@@ -390,6 +390,49 @@ If the tool needs third-party dependencies, add them to a new
 `[project.optional-dependencies]` extra rather than to `dependencies`, so the
 core install stays minimal.
 
+## Releasing
+
+Releases are tag-driven. CI publishes via PyPI **trusted publishing** (OIDC) —
+no API tokens stored anywhere.
+
+### One-time setup (per environment)
+
+Register a *pending publisher* on each index, then it becomes a normal
+publisher after the first upload.
+
+| Field             | Value                              |
+|-------------------|------------------------------------|
+| PyPI Project Name | `tflab-tools`                      |
+| Owner             | `terriblefire`                     |
+| Repository name   | `tflab-tools`                      |
+| Workflow name     | `release.yml`                      |
+| Environment name  | `pypi` (PyPI) / `testpypi` (TestPyPI) |
+
+URLs:
+- PyPI: <https://pypi.org/manage/account/publishing/> → "Add a new pending publisher"
+- TestPyPI: <https://test.pypi.org/manage/account/publishing/>
+
+Then create the matching environments in the GitHub repo (Settings →
+Environments → New environment): `pypi` and `testpypi`. Optional but
+recommended: protect the `pypi` environment with required reviewers so
+production releases need an approval click.
+
+### Cutting a release
+
+```sh
+# Dry-run via TestPyPI first
+git tag v0.2.0-rc1 && git push --tags
+# verify at https://test.pypi.org/p/tflab-tools
+
+# Real release
+git tag v0.2.0 && git push --tags
+# lands at https://pypi.org/p/tflab-tools
+```
+
+The workflow routes `*-rc*` / `*-test*` tags to TestPyPI and clean
+`vX.Y.Z` tags to PyPI. Bump `version` in `pyproject.toml` and
+`src/tflab/__init__.py` before tagging.
+
 ## License
 
 Copyright (C) 2016-2026 S.J. Leary.
