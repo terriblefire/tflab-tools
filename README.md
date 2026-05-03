@@ -7,7 +7,7 @@
 
 A small collection of hardware / FPGA bench tools by Stephen J. Leary.
 
-Eight command-line utilities and a Python library for talking to HP 1660-series
+Nine command-line utilities and a Python library for talking to HP 1660-series
 logic analysers. The package is organised so the core install is pure-Python
 and dependency-free; transport- and EDA-specific dependencies live in optional
 extras.
@@ -30,8 +30,9 @@ uv tool install 'tflab-tools[serial,gpib,eagle]'
 pipx install 'tflab-tools[serial,gpib,eagle]'
 ```
 
-After that, `bin2mif`, `bin2vrlg`, `mkzorro`, `hp1661-vcd`, `eagle-netlist`,
-`eagle-pcf` and `eagle-pdf` all run as ordinary commands from any shell.
+After that, `bin2mif`, `bin2vrlg`, `mkzorro`, `hp1661-vcd`, `hp1661-list`,
+`eagle-netlist`, `eagle-pcf` and `eagle-pdf` all run as ordinary commands from
+any shell.
 
 ### Plain `pip` in a venv
 
@@ -43,8 +44,8 @@ pip install 'tflab-tools[serial,gpib,eagle]'
 ### Picking your extras
 
 ```sh
-pip install tflab-tools                        # core: bin2mif, bin2vrlg, mkzorro, hp1661-vcd (LAN)
-pip install 'tflab-tools[serial]'              # + RS-232 transport for hp1661-vcd
+pip install tflab-tools                        # core: bin2mif, bin2vrlg, mkzorro, hp1661-vcd, hp1661-list (LAN)
+pip install 'tflab-tools[serial]'              # + RS-232 transport for the hp1661-* tools
 pip install 'tflab-tools[gpib]'                # + GPIB/USBTMC transport (PyVISA)
 pip install 'tflab-tools[eagle]'               # + eagle-netlist, eagle-pcf, eagle-pdf
 pip install 'tflab-tools[serial,gpib,eagle]'   # everything
@@ -74,6 +75,7 @@ After install, the following commands are available on `$PATH`:
 | `bin2vrlg`      | Convert a binary file to a Verilog `bootrom` module. |
 | `mkzorro`       | Generate Amiga Zorro AutoConfig ROM nibbles (Z2/Z3, configurable size, manufacturer ID, serial, product code). |
 | `hp1661-vcd`    | Capture data from an HP 1660-series logic analyser and write a VCD file. |
+| `hp1661-list`   | Capture data from an HP 1660-series logic analyser and print a tabular text listing. |
 | `eagle-netlist` | Generate a netlist from an EagleCAD `.sch` file. *(extra: `[eagle]`)* |
 | `eagle-pcf`     | Convert an Eagle netlist to an FPGA PCF (pin constraints) file. *(extra: `[eagle]`)* |
 | `eagle-pdf`     | Render an EagleCAD schematic to multi-page PDF. *(extra: `[eagle]`)* |
@@ -249,6 +251,54 @@ over GPIB. The driver handles this automatically.
 
 ---
 
+## hp1661-list
+
+Same data path as `hp1661-vcd`, different output: prints the current acquisition
+as a tabular text listing — one row per stored sample, one column per discovered
+label, with the trigger row marked. Works for both STATE and TIMING acquisitions
+and shares all transport options (`--lan`, `--serial`, `--gpib`).
+
+```sh
+hp1661-list [-h] [--lan LAN] [--serial SERIAL] [--baud BAUD] [--gpib]
+            [--machine {1,2}] [--base {hex,bin,dec,oct}]
+            [--start START] [--count COUNT] [--time]
+            [output]
+```
+
+`output` defaults to stdout; pass `-` or omit it to print, or pass a path to
+write to a file.
+
+| Flag         | Default    | Description |
+|--------------|------------|-------------|
+| `--machine`  | auto       | Pick machine 1 or 2. Defaults to the active machine; warns if both are active. |
+| `--base`     | `hex`      | Number base for multi-bit labels: `hex` / `bin` / `dec` / `oct`. |
+| `--start`    | full range | First line number relative to the trigger (negative = pre-trigger). |
+| `--count`    | all        | Maximum number of lines to emit. |
+| `--time`     | off        | Add a leading time/tag column. For TIMING captures this is real time relative to the trigger; for STATE captures it's the state count. |
+
+```sh
+# Quick look at the most recent capture, around the trigger
+hp1661-list --gpib --start -8 --count 16
+
+#     line          DATA  RW  AS  <-- TRIGGER on line 0
+# --------------------------------
+#       -8          ff10   1   0
+#       -7          ff12   1   0
+#       …
+#        0          0040   0   0  <-- TRIGGER
+#        1          0042   0   0
+#       …
+
+# Save a full capture to disk in binary, with a time column
+hp1661-list --gpib --base bin --time capture.txt
+```
+
+The active machine is auto-detected via `HP1660.get_machines()`, so passing
+`--machine` is only needed when both machines are configured and you want
+the inactive default.
+
+---
+
 ## eagle-netlist
 
 Extract a flat netlist from an EagleCAD schematic (`.sch`) file. Output format
@@ -397,6 +447,7 @@ tflab/
     ├── __init__.py                 re-exports the public API
     ├── hp1660.py                   logic-analyser driver (library)
     ├── hp1661_vcd.py               hp1661-vcd entry point
+    ├── hp1661_list.py              hp1661-list entry point
     ├── bin2mif.py                  bin2mif entry point
     ├── bin2vrlg.py                 bin2vrlg entry point
     ├── mkzorro.py                  mkzorro entry point
