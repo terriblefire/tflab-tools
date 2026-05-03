@@ -94,6 +94,26 @@ class VisaTransport:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class MachineInfo:
+    """Per-machine identity returned by HP1660.get_machines()."""
+    machine: int           # 1 or 2
+    type: str              # 'STATE', 'TIMING', 'SPA' (OFF machines are omitted)
+    name: str              # user-assigned name
+    pods: list             # list of pod numbers (ints)
+
+    def to_dict(self):
+        return {'machine': self.machine, 'type': self.type,
+                'name': self.name, 'pods': list(self.pods)}
+
+    @staticmethod
+    def from_dict(d):
+        return MachineInfo(machine=int(d.get('machine', 1)),
+                           type=str(d.get('type', '')),
+                           name=str(d.get('name', '')),
+                           pods=[int(p) for p in d.get('pods', [])])
+
+
+@dataclass
 class Label:
     name: str
     polarity: str
@@ -262,6 +282,7 @@ class Acquisition:
     trigger_row: int
     rows: list
     labels: list
+    mode: str = ''        # 'STATE' / 'TIMING' / '' (unknown — back-compat)
 
     def extract(self, row, label):
         """Extract bit values for a label from a data row."""
@@ -281,17 +302,29 @@ class Acquisition:
         return bits
 
     def to_vcd(self, filename):
-        """Write acquisition data to a VCD file."""
+        """Write acquisition data to a VCD file.
+
+        TIMING acquisitions use the analyzer's sample period as the VCD
+        timescale (ns or ps). STATE acquisitions have no inherent time
+        — emit one VCD tick per stored state with a 1 ns timescale so
+        viewers like GTKWave can render the sequence; rows are state
+        counts, not real time.
+        """
         rows = self.rows
         if not rows:
             return
         ps = self.sample_period_ps
-        ts_val, ts_unit = (ps // 1000, "ns") if ps >= 1000 else (ps, "ps")
+        is_state = (self.mode or '').upper().startswith('STAT')
+        if ps and ps > 0 and not is_state:
+            ts_val, ts_unit = (ps // 1000, "ns") if ps >= 1000 else (ps, "ps")
+        else:
+            ts_val, ts_unit = (1, "ns")
         ids = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
         with open(filename, 'w') as f:
             f.write(f"$date {time.strftime('%Y-%m-%d %H:%M:%S')} $end\n")
-            f.write("$version HP1660 $end\n")
+            ver = f"HP1660 {self.mode}".rstrip() if self.mode else "HP1660"
+            f.write(f"$version {ver} $end\n")
             f.write(f"$timescale {ts_val} {ts_unit} $end\n")
             f.write("$scope module la $end\n")
 
@@ -449,6 +482,29 @@ class HP1660:
         return errs
 
     # -- Machine state ----------------------------------------------------
+
+    def get_machine(self, machine):
+        """Return MachineInfo for `machine` (1 or 2), or None if OFF."""
+        t = (self.query(f':MACHINE{machine}:TYPE?') or '').strip()
+        if not t or t.upper() == 'OFF':
+            return None
+        name = (self.query(f':MACHINE{machine}:NAME?') or '').strip()
+        name = name.strip('"').strip("'").strip()
+        pods = self.get_pods(machine)
+        return MachineInfo(machine=machine, type=t, name=name, pods=pods)
+
+    def get_machines(self):
+        """Enumerate machines 1 and 2. Returns list of MachineInfo for
+        each machine whose TYPE is not OFF (so the result may be 0, 1,
+        or 2 entries). Use this as the entry point for tools that need
+        to know which machines are configured before querying anything
+        machine-specific."""
+        out = []
+        for n in (1, 2):
+            info = self.get_machine(n)
+            if info is not None:
+                out.append(info)
+        return out
 
     def acq_mode(self, machine=1):
         """Return acquisition mode string, or '' if machine is off."""
@@ -886,11 +942,13 @@ class HP1660:
 
     def acquire(self, machine=1):
         """Discover labels and download acquisition data. Returns Acquisition."""
+        mode = self.acq_mode(machine)
         labels = self.discover_labels(machine)
         self.cmd(':SYSTEM:DATA?')
         raw = self.read_block()
         parsed = self._parse_data(raw)
         parsed['labels'] = labels
+        parsed['mode'] = mode
         return Acquisition(**parsed)
 
     @staticmethod

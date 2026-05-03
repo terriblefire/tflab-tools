@@ -200,8 +200,9 @@ def main():
     p.add_argument('--baud', type=int, default=19200)
     p.add_argument('--gpib', action='store_true',
                    help='Use GPIB via USBTMC')
-    p.add_argument('--machine', type=int, default=1, choices=(1, 2),
-                   help='Machine number (default: 1)')
+    p.add_argument('--machine', type=int, default=None, choices=(1, 2),
+                   help='Machine number (default: auto — only active machine, '
+                        'or 1 if both are active)')
     p.add_argument('--base', default='hex',
                    choices=('hex', 'bin', 'dec', 'oct'),
                    help='Number base for multi-bit labels')
@@ -215,19 +216,41 @@ def main():
 
     la, handle = _open_la(args)
     try:
-        mode = la.acq_mode(args.machine) or ''
-        try:
-            name = la.query(f':MACHine{args.machine}:NAME?').strip().strip('"').strip("'").strip()
-        except Exception:
-            name = ''
-        acq = la.acquire(machine=args.machine)
+        # Discover active machines first — this is the canonical entry
+        # point for "what's configured on this analyzer right now".
+        machines = la.get_machines()
+        if not machines:
+            print('no active machines (both report TYPE OFF)', file=sys.stderr)
+            _close(handle)
+            sys.exit(3)
+
+        if args.machine is None:
+            chosen = machines[0]
+            if len(machines) > 1:
+                print(f'(multiple active machines: '
+                      f'{", ".join(str(m.machine) for m in machines)}; '
+                      f'using {chosen.machine}; pass --machine to override)',
+                      file=sys.stderr)
+        else:
+            chosen = next((m for m in machines if m.machine == args.machine), None)
+            if chosen is None:
+                print(f'machine {args.machine} is OFF; active machines: '
+                      f'{", ".join(str(m.machine) for m in machines)}',
+                      file=sys.stderr)
+                _close(handle)
+                sys.exit(3)
+
+        # MachineInfo.type is the truth for STATE vs TIMING — drives the
+        # tag-column rendering in write_listing().
+        acq = la.acquire(machine=chosen.machine)
     except Exception as e:
         print(f'acquire failed: {e}', file=sys.stderr)
         _close(handle)
         sys.exit(2)
 
     kwargs = dict(base=args.base, start=args.start, count=args.count,
-                  with_time=args.time, mode=mode, machine=args.machine, name=name)
+                  with_time=args.time, mode=chosen.type,
+                  machine=chosen.machine, name=chosen.name)
     if args.output and args.output != '-':
         with open(args.output, 'w') as f:
             write_listing(acq, f, **kwargs)
