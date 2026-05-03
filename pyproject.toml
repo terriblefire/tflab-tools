@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tflab-tools"
-version = "0.4.2"
+version = "0.4.3"
 description = "Stephen Leary's hardware/FPGA bench tools (bin2mif, bin2vrlg, mkzorro, hp1660 logic-analyser interface)"
 readme = "README.md"
 license = "GPL-2.0-or-later"
