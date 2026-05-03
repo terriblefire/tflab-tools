@@ -363,8 +363,11 @@ class Acquisition:
 # preamble start at section offset 16)
 _POD_ROW_OFFSETS = {8: 10, 7: 12, 6: 14, 5: 16, 4: 18, 3: 20, 2: 22, 1: 24}
 _COLUMN_SKIP = frozenset({
-    'RELATIVE', 'HEXADECIMAL', 'BINARY', 'DECIMAL', 'OCTAL',
-    'ASCII', 'TWOS', 'ONES', 'TAGS', 'MACHINE1', 'MACHINE2',
+    'RELATIVE', 'ABSOLUTE',
+    'HEXADECIMAL', 'BINARY', 'DECIMAL', 'OCTAL',
+    'ASCII', 'TWOS', 'ONES',
+    'SYMBOL', 'IASSEMBLER',
+    'TAGS', 'MACHINE1', 'MACHINE2',
 })
 
 
@@ -569,7 +572,11 @@ class HP1660:
     # -- Labels -----------------------------------------------------------
 
     def _label_names(self, machine=1):
-        """Enumerate label names via column queries. Returns list of unique names."""
+        """Enumerate label names via column queries. Returns list of unique names.
+
+        Stops scanning early after a short run of empty / non-label responses
+        so we don't fire 60 SCPI queries (and 60 follow-up LABEL? queries) at
+        an analyzer that only has a handful of columns configured."""
         mode = self.acq_mode(machine)
         if not mode:
             return []
@@ -577,20 +584,28 @@ class HP1660:
 
         seen = set()
         names = []
+        empty_streak = 0
         for col in range(60):
             resp = self.query(f':MACHINE{machine}:{lc}:COLUMN? {col}')
             if not resp:
-                break
+                empty_streak += 1
+                if empty_streak >= 3:
+                    break
+                continue
             name = None
             for p in resp.split(','):
                 p = p.strip().strip('"').strip()
-                if p and p not in _COLUMN_SKIP and not p.isdigit():
+                if p and p.upper() not in _COLUMN_SKIP and not p.lstrip('+-').isdigit():
                     name = p
                     break
             if not name:
+                empty_streak += 1
+                if empty_streak >= 3:
+                    break
                 continue
             if name in seen:
                 break
+            empty_streak = 0
             seen.add(name)
             names.append(name)
         return names
@@ -605,38 +620,17 @@ class HP1660:
         mode = self.acq_mode(machine)
         if not mode:
             return []
-        lc = 'TLIST' if mode == 'TIMING' else 'SLIST'
         fc = 'TFORMAT' if mode == 'TIMING' else 'SFORMAT'
 
-        # Enumerate column names
-        skip = _COLUMN_SKIP
-        seen = set()
-        names = []
-        for col in range(30):
-            resp = self.query(f':MACHINE{machine}:{lc}:COLUMN? {col}')
-            if not resp:
-                continue
-            name = None
-            for p in resp.split(','):
-                p = p.strip().strip('"').strip()
-                if p and p not in skip and not p.isdigit():
-                    name = p
-                    break
-            if not name:
-                continue
-            if name in seen:
-                break
-            seen.add(name)
-            names.append(name)
+        # Reuse the (faster, skip-list aware, early-exit) name enumerator.
+        names = self._label_names(machine)
 
-        # Query label assignments
         labels = []
         for name in names:
             resp = self.query(f":MACHINE{machine}:{fc}:LABEL? '{name}'")
             label = self._parse_label(resp)
             if label:
                 labels.append(label)
-
         return labels
 
     def get_label(self, name, machine=1):
