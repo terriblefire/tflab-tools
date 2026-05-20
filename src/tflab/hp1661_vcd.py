@@ -132,6 +132,7 @@ def main():
     parsed = la._parse_data(data)
     parsed['labels'] = labels
     parsed['mode'] = chosen.type
+    parsed['pods'] = chosen.pods
     acq = Acquisition(**parsed)
     print(f"  {len(acq.rows)} rows @ {acq.sample_period_ps}ps trigger@{acq.trigger_row}",
           flush=True)

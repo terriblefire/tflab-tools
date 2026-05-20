@@ -283,9 +283,18 @@ class Acquisition:
     rows: list
     labels: list
     mode: str = ''        # 'STATE' / 'TIMING' / '' (unknown — back-compat)
+    # Machine's pod assignment, ordered high-to-low (matches :LABEL?
+    # response order). Required to correctly index into row pods —
+    # label.pod_masks[i] applies to pod number self.pods[i].
+    pods: list = field(default_factory=list)
 
     def extract(self, row, label):
-        """Extract bit values for a label from a data row."""
+        """Extract bit values for a label from a data row.
+
+        Data row pods are physically ordered pod_max..pod_1 (highest pod
+        number at index 0). label.pod_masks[i] is for pod number
+        self.pods[i] — translate via index = n_pods - pod_number.
+        """
         clk_word, pods = row
         bits = []
         if label.clock_bits:
@@ -295,7 +304,11 @@ class Acquisition:
         for i, mask in enumerate(label.pod_masks):
             if not mask:
                 continue
-            pv = pods[i] if i < len(pods) else 0
+            if self.pods and i < len(self.pods):
+                idx = self.n_pods - self.pods[i]
+            else:
+                idx = i  # back-compat for callers that didn't supply pods
+            pv = pods[idx] if 0 <= idx < len(pods) else 0
             for bit in range(15, -1, -1):
                 if mask & (1 << bit):
                     bits.append((pv >> bit) & 1)
@@ -938,11 +951,13 @@ class HP1660:
         """Discover labels and download acquisition data. Returns Acquisition."""
         mode = self.acq_mode(machine)
         labels = self.discover_labels(machine)
+        pods = self.get_pods(machine)
         self.cmd(':SYSTEM:DATA?')
         raw = self.read_block()
         parsed = self._parse_data(raw)
         parsed['labels'] = labels
         parsed['mode'] = mode
+        parsed['pods'] = pods
         return Acquisition(**parsed)
 
     @staticmethod
